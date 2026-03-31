@@ -1,12 +1,12 @@
 # CLAUDE.md Token Stack Snippet
 
 > Copy-paste this block into your `~/.claude/CLAUDE.md` to enforce extreme token savings.
-> Requires: [claude-sm](https://github.com/Supersynergy/claude-sm) + [RTK](https://rtk-ai.app) + context-mode (via ECC or npm)
+> Requires: [claude-token-saver](https://github.com/Supersynergy/claude-sm) + [RTK](https://rtk-ai.app) + context-mode + shellfirm
 
 ---
 
 ```markdown
-## Token Stack — ALWAYS USE (Vault + RTK + context-mode)
+## Token Stack — ALWAYS USE (Vault + RTK + context-mode + shellfirm)
 
 ### Session Start
 Run `/sm init` once per session — indexes key docs, shows savings dashboard, activates all layers.
@@ -66,12 +66,22 @@ ctx_search(queries=["authentication"], source="api-docs")
 /sm load <name>       # load from vault on demand
 ```
 
+### Layer 4: shellfirm (AI safety guardrails)
+Intercepts destructive commands before execution:
+- `rm -rf` → shows blast radius + alternative
+- `git push --force` → BLOCKED severity:CRITICAL
+- `kubectl delete ns` → context-aware protection
+
+MCP tools: `check_command`, `suggest_alternative`, `explain_risk`, `get_policy`
+
+Install: `brew tap kaplanelad/tap && brew install shellfirm && shellfirm connect claude-code`
+
 ### Model Routing
 - haiku: search, explore, simple tasks ($1/$5 per M)
 - sonnet: code, planning, complex tasks ($3/$15 per M)
 - opus: architecture decisions only ($5/$25 per M)
 
-### Combined Potential: 2-3.5M tokens/month saved
+### Combined Potential: 4-5M tokens/month saved
 ```
 
 ---
@@ -79,19 +89,19 @@ ctx_search(queries=["authentication"], source="api-docs")
 ## Quick Install
 
 ```bash
-# 1. Install claude-sm (skills + vault + RTK integration)
+# 1. Install claude-token-saver (skills + vault + sm init)
 curl -fsSL https://raw.githubusercontent.com/Supersynergy/claude-sm/main/install.sh | bash
 
-# 2. Install RTK
-curl -fsSL https://rtk-ai.app/install | bash
+# 2. Install RTK (Bash compression)
+brew install rtk-ai/tap/rtk
 
 # 3. context-mode (via ECC or standalone)
 npm install -g context-mode
 # or install ECC: https://github.com/Supersynergy/everything-claude-code
 
-# 4. Move all skills to vault (zero startup)
-cd ~/.claude/skills && for item in $(ls | grep -v "^sm\.md$"); do mv "$item" ../skills-vault/; done
-python3 ~/.claude/scripts/build-skills-index.py --vault-dir ~/.claude/skills-vault
+# 4. shellfirm (AI safety guardrails)
+brew tap kaplanelad/tap && brew install shellfirm
+shellfirm connect claude-code
 
 # 5. Initialize stack
 # In Claude Code: /sm init
