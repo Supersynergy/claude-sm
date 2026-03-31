@@ -4,7 +4,8 @@
 #
 # What this installs:
 #   ~/.claude/skills/sm.md                   — /sm slash command
-#   ~/.claude/scripts/build-skills-index.py  — index builder
+#   ~/.claude/skills-vault/                  — cold storage dir (saves 5-8K tokens at startup)
+#   ~/.claude/scripts/build-skills-index.py  — index builder (hot + vault)
 #   ~/.claude/hooks/skills-index-session.sh  — auto-rebuild on session start
 #   Adds SessionStart hook to ~/.claude/settings.json
 
@@ -13,6 +14,7 @@ set -e
 REPO_RAW="https://raw.githubusercontent.com/Supersynergy/claude-sm/main"
 CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 SKILLS_DIR="$CLAUDE_DIR/skills"
+VAULT_DIR="$CLAUDE_DIR/skills-vault"
 SCRIPTS_DIR="$CLAUDE_DIR/scripts"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SETTINGS="$CLAUDE_DIR/settings.json"
@@ -35,7 +37,8 @@ if [ ! -d "$CLAUDE_DIR" ]; then
 fi
 
 # ── Create dirs ──────────────────────────────────────────────────────────────
-mkdir -p "$SKILLS_DIR" "$SCRIPTS_DIR" "$HOOKS_DIR"
+mkdir -p "$SKILLS_DIR" "$VAULT_DIR" "$SCRIPTS_DIR" "$HOOKS_DIR"
+ok "Created directories (hot + vault)"
 
 # ── Download or copy files ───────────────────────────────────────────────────
 install_file() {
@@ -87,10 +90,16 @@ fi
 
 # ── Build initial index ──────────────────────────────────────────────────────
 echo ""
-info "Building skills index..."
-if python3 "$SCRIPTS_DIR/build-skills-index.py" --skills-dir "$SKILLS_DIR" --output-dir "$CLAUDE_DIR"; then
-    TOTAL=$(wc -l < "$CLAUDE_DIR/skills.idx" | tr -d ' ')
-    ok "Indexed $TOTAL skills"
+info "Building skills index (hot + vault)..."
+if python3 "$SCRIPTS_DIR/build-skills-index.py" \
+    --skills-dir "$SKILLS_DIR" \
+    --vault-dir "$VAULT_DIR" \
+    --output-dir "$CLAUDE_DIR"; then
+    IDX="$CLAUDE_DIR/skills.idx"
+    TOTAL=$(wc -l < "$IDX" | tr -d ' ')
+    HOT=$(awk -F'\t' '$5=="0"' "$IDX" | wc -l | tr -d ' ')
+    VAULT=$(awk -F'\t' '$5=="1"' "$IDX" | wc -l | tr -d ' ')
+    ok "Indexed $TOTAL skills ($HOT hot + $VAULT vault)"
 else
     warn "Index build failed — run manually: python3 ~/.claude/scripts/build-skills-index.py"
 fi
@@ -101,12 +110,19 @@ echo "===================================="
 ok "Claude Skill Manager & Token Saver installed"
 echo ""
 echo "Commands:"
-echo "  /sm search <query>   find skills by keyword  (~0 tokens)"
-echo "  /sm list             browse by category"
-echo "  /sm auto <intent>    find + invoke best skill"
-echo "  /sm stats            portfolio + token savings"
-echo "  /sm tokens           token saving cheatsheet"
-echo "  /sm rebuild          refresh index"
+echo "  /sm search <query>    find skills by keyword  (~0 tokens)"
+echo "  /sm list              browse by category"
+echo "  /sm auto <intent>     find + invoke best skill"
+echo "  /sm vault <name>      move skill to cold storage  (saves startup tokens)"
+echo "  /sm unvault <name>    restore vault skill to hot"
+echo "  /sm stats             portfolio + token savings"
+echo "  /sm tokens            token saving cheatsheet"
+echo "  /sm rebuild           refresh index"
+echo ""
+echo "Vault pattern:"
+echo "  Skills in ~/.claude/skills/       = HOT  (auto-loaded, ~40 tokens/skill)"
+echo "  Skills in ~/.claude/skills-vault/ = COLD (on-demand, 0 startup tokens)"
+echo "  Move rarely-used skills: /sm vault <name>"
 echo ""
 echo "Token saving: rg idx (~0) → ctx_search (~200-500) → Read one file (~500-5K)"
 echo "              All skills loaded = ~160K tokens (never do that!)"

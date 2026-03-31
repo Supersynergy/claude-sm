@@ -2,6 +2,7 @@
 
 > **Discover and load 300+ Claude Code skills with ~0 token overhead.**
 > Three-layer lazy loading: grep index → semantic search → on-demand file read.
+> Vault pattern: cold-store rarely-used skills for 0 startup cost.
 > Never loads all skills at once. Saves 100K–160K tokens per session.
 
 [![Claude Code](https://img.shields.io/badge/Claude_Code-2.1+-blueviolet)](https://claude.ai/code)
@@ -17,7 +18,26 @@ Claude Code loads skill **metadata for every skill at startup**. With 300+ skill
 
 ## The Solution
 
-`/sm` — a three-layer lazy loading system that makes discovery essentially free:
+Two complementary systems:
+
+### 1. Vault Pattern — Startup Token Elimination
+
+```
+~/.claude/skills/        = HOT  (auto-loaded at startup, ~40 tokens/skill)
+~/.claude/skills-vault/  = COLD (never auto-loaded, 0 startup tokens)
+```
+
+Move skills you don't use daily to the vault. They stay **fully discoverable and loadable** — just no startup cost.
+
+```bash
+/sm vault kotlin-patterns    # → cold storage (saves ~40 tokens/session)
+/sm vault laravel-tdd        # → cold storage
+/sm unvault kotlin-patterns  # → restore to hot when needed
+```
+
+### 2. Three-Layer Lazy Loading — Discovery for Free
+
+`/sm` — instant search without loading any skill content:
 
 | Layer | Method | Tokens | Speed |
 |-------|--------|--------|-------|
@@ -40,6 +60,7 @@ cp sm.md ~/.claude/skills/sm.md
 cp build-skills-index.py ~/.claude/scripts/
 cp skills-index-session.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/skills-index-session.sh ~/.claude/scripts/build-skills-index.py
+mkdir -p ~/.claude/skills-vault
 python3 ~/.claude/scripts/build-skills-index.py
 ```
 
@@ -51,12 +72,14 @@ python3 ~/.claude/scripts/build-skills-index.py
 
 ```
 /sm search <query>     — instant keyword search (~0 tokens)
-/sm list [category]    — browse by category
-/sm load <name>        — read full skill content
+/sm list [category]    — browse by category (shows hot + vault)
+/sm load <name>        — read full skill content (works for vault too)
 /sm auto <intent>      — find best skill and invoke it
-/sm stats              — portfolio overview + RTK savings
+/sm vault <name>       — move skill to cold storage (0 startup cost)
+/sm unvault <name>     — restore vault skill to hot
+/sm stats              — portfolio overview + token savings
 /sm tokens             — token saving cheatsheet
-/sm rebuild            — regenerate index after adding skills
+/sm rebuild            — regenerate index after adding/moving skills
 ```
 
 ### Examples
@@ -64,12 +87,24 @@ python3 ~/.claude/scripts/build-skills-index.py
 ```bash
 /sm search plane           # → finds /plane (Plane.so PM skill)
 /sm search browser         # → finds agent-browser, ghostbrowser, ...
-/sm list Agents            # → all 16 agent skills
-/sm list Lang              # → all 36 language skills
+/sm list Agents            # → all agent skills (hot + vault [V])
+/sm list Lang              # → all language skills (many in vault)
 /sm auto "scrape a website with stealth"  # → finds + invokes /ghostbrowser
 /sm auto "create a new issue in PM"       # → finds + invokes /plane
 /sm load agent-browser     # → loads full 200-line skill content
-/sm stats                  # → shows index size, RTK savings, categories
+/sm load kotlin-patterns   # → loads from vault [V], still works!
+/sm vault laravel-tdd      # → moves to cold storage, saves ~40 tokens/session
+/sm stats                  # → shows hot/vault breakdown, RTK savings
+```
+
+### [V] Tag
+
+Vault skills are shown with `[V]` in all search and list output:
+
+```
+  /kotlin-patterns         [Lang] [V]  Idiomatic Kotlin patterns, coroutines...
+  /laravel-tdd             [Lang] [V]  Laravel test-driven development...
+  /agent-browser           [Agents]    Ultra-fast browser automation...
 ```
 
 ---
@@ -88,22 +123,23 @@ python3 ~/.claude/scripts/build-skills-index.py
 
 ## Token Savings Architecture
 
-This works alongside other token-saving layers already in Claude Code:
-
 ```
 Request arrives
     │
-    ├─ 1. /sm grep idx (rg)     ~0 tokens    ← this tool
+    ├─ 1. Vault (startup)      0 tokens    ← cold skills never load
+    │     (skills-vault/ not scanned)
     │
-    ├─ 2. /sm ctx_search        ~200-500      ← this tool (semantic fallback)
+    ├─ 2. /sm grep idx (rg)   ~0 tokens    ← this tool
     │
-    ├─ 3. RTK hook              60-90% CLI    ← if rtk installed
+    ├─ 3. /sm ctx_search      ~200-500      ← this tool (semantic fallback)
+    │
+    ├─ 4. RTK hook            60-90% CLI    ← if rtk installed
     │     (rewrites git/grep/ls/curl → compact)
     │
-    ├─ 4. context-mode          virtualize    ← large output management
+    ├─ 5. context-mode        virtualize    ← large output management
     │     (ctx_index + ctx_search)
     │
-    └─ 5. strategic compact     100-200K/mo   ← /compact at milestones
+    └─ 6. strategic compact   100-200K/mo   ← /compact at milestones
 ```
 
 **Combined potential: 4–5M tokens/month saved** (active Claude Code user)
@@ -112,32 +148,57 @@ Request arrives
 
 ## How the Index Works
 
-`~/.claude/skills.idx` — TSV, one skill per line, grep-able:
+`~/.claude/skills.idx` — TSV, 5 columns, one skill per line, grep-able:
 ```
-agent-browser   Agents   Ultra-fast browser automation for AI agents. 93% fewer tokens...   /path/to/SKILL.md
-plane           PM       Plane.so project management — create issues, query projects...      /path/to/plane.md
-rust-patterns   Lang     Idiomatic Rust patterns, ownership, lifetimes, error handling...    /path/to/SKILL.md
+name          category  description (90 chars max)        path                    vault
+─────────────────────────────────────────────────────────────────────────────────────────
+agent-browser Agents    Ultra-fast browser automation...  /path/to/SKILL.md       0
+kotlin-patt…  Lang      Idiomatic Kotlin patterns...      /path/to/vault/SKILL.md 1
+plane         PM        Plane.so project management...    /path/to/plane.md       0
 ```
+
+Column 5: `0` = hot (in `~/.claude/skills/`), `1` = vault (in `~/.claude/skills-vault/`)
 
 `~/.claude/skills-catalog.md` — Markdown by category, indexed with context-mode BM25:
 ```markdown
-## Agents (16 skills)
+## Agents (16 hot + 3 vault = 19 total)
 - `/agent-browser` — Ultra-fast browser automation...
-- `/ghostbrowser` — Stealth browser automation...
+- `/kotlin-patterns` [V] — Idiomatic Kotlin patterns...
 ```
 
-The catalog is chunked by `## Category` headings so `ctx_index` creates one chunk per category — enabling semantic search that returns only the relevant category section.
+---
+
+## Recommended Vault Candidates
+
+Skills that are safe to vault (rarely needed daily, high token cost at startup):
+
+| Category | Examples | Savings |
+|----------|----------|---------|
+| **Language-specific** | kotlin-*, laravel-*, django-*, springboot-*, swift-*, android-* | ~40/skill |
+| **Heavy meta tools** | token-budget-advisor (~209 tokens!), prompt-optimizer (~183) | high |
+| **Industry/ops** | logistics-*, customs-*, energy-procurement, quality-nonconformance | ~40/skill |
+| **Rarely-used PM** | eval-harness, benchmark, wiring-checkpoint | ~40/skill |
+
+Move them all at once:
+```bash
+/sm vault kotlin-patterns
+/sm vault laravel-tdd
+/sm vault django-patterns
+/sm vault swift-actor-persistence
+# etc. — /sm rebuild when done
+```
 
 ---
 
 ## Files
 
 | File | Purpose | Install Location |
-|------|---------|-----------------|
+|------|---------|--------------------|
 | `sm.md` | `/sm` skill (slash command) | `~/.claude/skills/sm.md` |
-| `build-skills-index.py` | Builds `skills.idx` + catalog | `~/.claude/scripts/` |
+| `build-skills-index.py` | Builds `skills.idx` + catalog (hot + vault) | `~/.claude/scripts/` |
 | `skills-index-session.sh` | Auto-rebuild SessionStart hook | `~/.claude/hooks/` |
 | `install.sh` | One-command installer | run via curl |
+| `~/.claude/skills-vault/` | Cold storage dir (created by installer) | auto-created |
 
 ---
 
@@ -147,8 +208,10 @@ The catalog is chunked by `## Category` headings so `ctx_index` creates one chun
 python3 build-skills-index.py [options]
 
 Options:
-  --skills-dir PATH   Skills directory (default: ~/.claude/skills)
+  --skills-dir PATH   Hot skills directory (default: ~/.claude/skills)
+  --vault-dir PATH    Vault directory (default: ~/.claude/skills-vault)
   --output-dir PATH   Output dir for idx + catalog (default: ~/.claude)
+  --no-vault          Skip vault directory scan
   --quiet, -q         Suppress output
 ```
 
@@ -160,7 +223,7 @@ Supports any skills directory layout — not just `~/.claude/skills`. Works with
 
 Auto-assigned from skill name. Expand `CATS` dict in `build-skills-index.py` for custom mappings:
 
-`Agents` `AI` `Biz` `Browser` `Content` `Data` `DevOps` `Frontend` `GSD` `Lang` `Media` `Meta` `OpenSpec` `PM` `Research` `Security` `Other`
+`Agents` `AI` `Biz` `Browser` `Content` `Data` `DevOps` `Frontend` `GSD` `Lang` `Media` `Meta` `OpenSpec` `Ops` `PM` `Research` `Security` `Other`
 
 ---
 
@@ -168,6 +231,7 @@ Auto-assigned from skill name. Expand `CATS` dict in `build-skills-index.py` for
 
 - Add new skills: place `.md` files with `name:` + `description:` frontmatter in `~/.claude/skills/`
 - Run `/sm rebuild` to re-index
+- Move cold skills: `/sm vault <name>` then `/sm rebuild`
 - Improve categories: extend `CATS` dict in `build-skills-index.py`
 
 ---
