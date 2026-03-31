@@ -1,7 +1,7 @@
 # CLAUDE.md Token Stack Snippet
 
 > Copy-paste this block into your `~/.claude/CLAUDE.md` to enforce extreme token savings.
-> Requires: [claude-token-saver](https://github.com/Supersynergy/claude-sm) + [RTK](https://rtk-ai.app) + context-mode + shellfirm
+> Requires: [claude-token-saver](https://github.com/Supersynergy/claude-token-saver) + [RTK](https://rtk-ai.app) + context-mode + shellfirm
 
 ---
 
@@ -90,7 +90,7 @@ Install: `brew tap kaplanelad/tap && brew install shellfirm && shellfirm connect
 
 ```bash
 # 1. Install claude-token-saver (skills + vault + sm init)
-curl -fsSL https://raw.githubusercontent.com/Supersynergy/claude-sm/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Supersynergy/claude-token-saver/main/install.sh | bash
 
 # 2. Install RTK (Bash compression)
 brew install rtk-ai/tap/rtk

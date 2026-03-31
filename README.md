@@ -143,7 +143,7 @@ Decision Matrix:
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Supersynergy/claude-sm/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Supersynergy/claude-token-saver/main/install.sh | bash
 ```
 
 ### Requirements

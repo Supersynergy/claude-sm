@@ -5,7 +5,7 @@
 # ╚══════════════════════════════════════════════════════════════════╝
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Supersynergy/claude-sm/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Supersynergy/claude-token-saver/main/install.sh | bash
 #   bash install.sh                    # interactive (default)
 #   bash install.sh --dry-run          # preview only, no changes
 #   bash install.sh --silent           # no prompts, safe defaults
@@ -105,7 +105,7 @@ detect_pkg_manager() {
 
 OS=$(detect_os)
 PKG=$(detect_pkg_manager)
-REPO_RAW="https://raw.githubusercontent.com/Supersynergy/claude-sm/main"
+REPO_RAW="https://raw.githubusercontent.com/Supersynergy/claude-token-saver/main"
 
 # ── Locate Claude config dir ──────────────────────────────────────────────────
 find_claude_dir() {
