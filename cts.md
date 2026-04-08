@@ -3,11 +3,11 @@ name: cts
 description: >-
   Zero-token skill manager + full token-saving stack. Manages 300+ skills via
   vault pattern (cold storage). Integrates RTK (60-90% CLI savings) +
-  context-mode (83% context reduction). Auto-invokes when user asks "what
-  skill", "which command", "can you", "do you have a skill for", or says
-  "skills". Use / cts init at session start for extreme token savings.
+  context-mode v1.0.75 (98% context reduction, 10 tools). Auto-invokes when user
+  asks "what skill", "which command", "can you", "do you have a skill for", or
+  says "skills". Use / cts init at session start for extreme token savings.
 argument-hint: "[init | search <q> | load <name> | list [cat] | auto <intent> | vault <name> | unvault <name> | stats | tokens | rebuild]"
-allowed-tools: [Bash, Read, mcp__context-mode__ctx_search, mcp__context-mode__ctx_index, mcp__context-mode__ctx_batch_execute, mcp__context-mode__ctx_stats]
+allowed-tools: [Bash, Read, mcp__context-mode__ctx_search, mcp__context-mode__ctx_index, mcp__context-mode__ctx_batch_execute, mcp__context-mode__ctx_execute, mcp__context-mode__ctx_execute_file, mcp__context-mode__ctx_fetch_and_index, mcp__context-mode__ctx_stats, mcp__context-mode__ctx_doctor, mcp__context-mode__ctx_upgrade, mcp__context-mode__ctx_purge]
 model: haiku
 ---
 
@@ -77,14 +77,17 @@ echo ""
 echo "LAYER 1 — RTK (Bash compression, auto-active)"
 rtk gain 2>/dev/null | grep -E "Tokens saved|commands" | sed 's/^/  /' || echo "  rtk gain for savings"
 echo ""
-echo "LAYER 2 — context-mode (indexed docs, active)"
+echo "LAYER 2 — context-mode v1.0.75 (98% context reduction)"
 echo "  Indexed: skills-catalog | RTK | toolstack"
-echo "  Use ctx_search(queries=[...], source='skills-catalog') to search"
+echo "  10 tools: ctx_batch_execute | ctx_execute | ctx_execute_file"
+echo "  ctx_index | ctx_search | ctx_fetch_and_index | ctx_stats"
+echo "  ctx_doctor | ctx_upgrade | ctx_purge"
 echo ""
 echo "LAYER 3 — Decision Matrix"
-echo "  2+ Bash calls          → ctx_batch_execute  (90% savings)"
-echo "  Read large file        → ctx_execute_file   (85% savings)"
-echo "  Fetch URL/docs         → ctx_fetch_and_index (80% savings)"
+echo "  2+ Bash commands       → ctx_batch_execute  (986KB→62KB, ~94% savings)"
+echo "  Run code (11 langs)    → ctx_execute        (56KB→299B, ~99% savings)"
+echo "  Read large file        → ctx_execute_file   (45KB→155B, ~99% savings)"
+echo "  Fetch URL/docs         → ctx_fetch_and_index (60KB→40B, ~99% savings)"
 echo "  Search indexed docs    → ctx_search          (~200 tokens)"
 echo "  Single quick Bash      → RTK hook (auto)     (60-90% savings)"
 echo "  Find a skill           → / cts search          (~0 tokens)"
@@ -318,22 +321,27 @@ echo "  rtk gain                show total savings"
 echo "  rtk gain --graph        30-day trend"
 echo "  rtk discover -a         find missed opportunities"
 echo ""
-echo "━━━ LAYER 2: context-mode v1.0.54 — 83% Context Reduction ━━━"
-echo "  RULE: 2+ Bash calls → ctx_batch_execute (90% savings)"
+echo "━━━ LAYER 2: context-mode v1.0.75 — 98% Context Reduction ━━━"
+echo "  RULE: 2+ Bash calls → ctx_batch_execute (94% savings)"
 echo ""
-echo "  ctx_batch_execute       N commands in 1 call  (90% savings)"
-echo "  ctx_execute_file        large file → summary  (85% savings)"
-echo "  ctx_fetch_and_index     URL → indexed         (80% savings)"
+echo "  ctx_batch_execute       N commands in 1 call  (986KB→62KB, ~94%)"
+echo "  ctx_execute             run code in 11 langs   (56KB→299B, ~99%)"
+echo "  ctx_execute_file        large file → summary  (45KB→155B, ~99%)"
+echo "  ctx_index               chunk+index doc       (load once)"
 echo "  ctx_search              query indexed docs    (~200 tokens)"
-echo "  ctx_index               index doc once        (load once)"
+echo "  ctx_fetch_and_index     URL → indexed         (60KB→40B, ~99%)"
 echo "  ctx_stats               session savings report"
+echo "  ctx_doctor              diagnose installation"
+echo "  ctx_upgrade             upgrade to latest"
+echo "  ctx_purge               delete all indexed content"
 echo ""
 echo "  Decision Matrix:"
 echo "  2+ Bash/grep/ls/find   → ctx_batch_execute"
-echo "  Read file > 100 lines  → ctx_execute_file"
-echo "  Fetch URL / docs       → ctx_fetch_and_index"
-echo "  Search loaded docs     → ctx_search"
-echo "  Single quick command   → RTK hook (automatic)"
+echo "  Code execution (11 lang)→ ctx_execute (intent-driven if >5KB)"
+echo "  Read file > 100 lines   → ctx_execute_file"
+echo "  Fetch URL / docs        → ctx_fetch_and_index"
+echo "  Search loaded docs      → ctx_search"
+echo "  Single quick command    → RTK hook (automatic)"
 echo ""
 echo "━━━ LAYER 3: SKILL DISCOVERY ━━━"
 echo "  / cts search <q>          ~0 tokens    rg on idx"
@@ -398,7 +406,7 @@ echo "  / cts rebuild           refresh index"
 echo ""
 echo "  [V] = vault skill — searchable but not auto-loaded (0 startup cost)"
 echo ""
-echo "  Stack: Vault (~0 startup) + RTK (60-90% CLI) + context-mode (83% context)"
+echo "  Stack: Vault (~0 startup) + RTK (60-90% CLI) + context-mode v1.0.75 (98% context)"
 echo "  Run / cts init to activate all layers"
 echo ""
 echo "Index: ~/.claude/cts.idx ($BYTES bytes)"
@@ -408,14 +416,17 @@ echo "Index: ~/.claude/cts.idx ($BYTES bytes)"
 
 ## Token Budget Table
 
-| Method | Tokens | When |
-|--------|--------|------|
+| Method | Raw → Context | Savings |
+|--------|---------------|---------|
 | Vault skills at startup | **0** | cold-stored, never auto-loaded |
-| Hot skill metadata | ~40/skill | loaded at startup (only sm.md) |
+| Hot skill metadata | ~40/skill | loaded at startup (only cts.md) |
 | `rg` on idx | **~0** | exact/keyword search, <20ms |
-| `ctx_search` | ~200-500 | semantic/fuzzy on indexed catalog |
-| `ctx_batch_execute` N cmds | ~300 | replaces N×Bash calls (~90% savings) |
-| `ctx_execute_file` | ~200 | large file summary (~85% savings) |
-| `ctx_fetch_and_index` | ~300 | URL indexing (~80% savings) |
+| `ctx_search` | ~200 | semantic/fuzzy on indexed catalog |
+| `ctx_batch_execute` N cmds | 986KB → 62KB | ~94% (~300 tokens) |
+| `ctx_execute` (11 langs) | 56KB → 299B | ~99% (intent-driven if >5KB) |
+| `ctx_execute_file` | 45KB → 155B | ~99% |
+| `ctx_fetch_and_index` | 60KB → 40B | ~99% |
 | `Read` one skill | ~500-5K | loading content on demand |
 | All skills loaded | ~150K | **never do this** |
+
+**New in v1.0.75:** Porter stemming for fuzzy matching, 11 language runtimes (JS/TS/Python/Shell/Ruby/Go/Rust/PHP/Perl/R/Elixir), Bun auto-detection for 3-5x faster execution.

@@ -9,7 +9,7 @@
 # └──────────────────────────��─────────────────────────���────────────┘
 set -euo pipefail
 
-CTS_VERSION="3.0.0"
+CTS_VERSION="3.1.0"
 CTS_REPO="https://raw.githubusercontent.com/Supersynergy/claude-token-saver/main"
 CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 CTS_DIR="$CLAUDE_DIR/cts"           # vault: all cold-stored skills/agents/commands
