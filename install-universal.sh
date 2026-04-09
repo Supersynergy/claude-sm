@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # ╔═══════════════════════════════════════════════════════════════════════╗
-# ║     ⚡ Universal Token Saver — Universal Installer                  ║
-# ║     Supports: Claude Code, Gemini CLI, Kilo/Code, Codex, Kimi        ║
+# ║  ⚡ Universal Agent Token Saver — Universal Installer              ║
+# ║  Adaptive Model Selection + Token Optimization                       ║
+# ║  Supports: Claude Code, Gemini CLI, Kilo/Code, Codex, Kimi          ║
 # ╚═══════════════════════════════════════════════════════════════════════╝
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-token-saver/main/install-universal.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-agent-token-saver/main/install-universal.sh | bash
 #   curl -fsSL ... | bash -s -- --adapter=gemini
 #   curl -fsSL ... | bash -s -- --adapter=all
 
@@ -13,7 +14,7 @@ set -euo pipefail
 
 # ── Version ──────────────────────────────────────────────────────────
 UTS_VERSION="1.0.0"
-UTS_REPO="https://raw.githubusercontent.com/Supersynergy/universal-token-saver/main"
+UTS_REPO="https://raw.githubusercontent.com/Supersynergy/universal-agent-token-saver/main"
 
 # ── Paths ───────────────────────────────────────────────────────────
 UTS_HOME="${UTS_HOME:-$HOME/.uts}"

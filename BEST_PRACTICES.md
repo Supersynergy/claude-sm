@@ -1,7 +1,18 @@
-# Claude Token-Saver — Best Practices
+# Universal Agent Token Saver — Best Practices
 
-> Synthesized from RTK, context-mode, claude-hud, shellfirm, and vault pattern.
-> Goal: maximum token efficiency + safety + developer experience.
+> Synthesized from RTK, context-mode, claude-hud, shellfirm, vault pattern, and UTS.
+> Goal: maximum developer efficiency + safety — adaptive by provider.
+
+---
+
+## ⚡ The New Philosophy
+
+```
+Fast API (MiniMax M2.7): Speed > Efficiency
+Expensive API (Claude):  Efficiency > Speed
+```
+
+**Rule**: Don't optimize tokens when time costs more than tokens.
 
 ---
 
@@ -173,22 +184,45 @@ SHELLFIRM_SKIP=1 ./deploy.sh            # env var to skip in automation
 
 ---
 
-## Model Routing (cost optimization)
+## Model Routing (UTS — Adaptive)
 
-| Task | Model | Cost (in/out per M) |
-|------|-------|---------------------|
-| Search, explore, list skills | **Haiku 4.5** | $1/$5 |
-| Code, plan, complex analysis | **Sonnet 4.6** | $3/$15 |
-| Architecture decisions only | **Opus 4.6** | $5/$25 |
+### By Provider Strategy
 
-**Savings with routing**: Using Haiku for exploration = 3x cheaper than Sonnet, 5x cheaper than Opus.
+| Provider | Token Savings | When to Use |
+|----------|--------------|-------------|
+| **MiniMax M2.7** | None needed | Speed-critical tasks, high volume |
+| **Google Gemini 3 Flash** | Minimal | Quick tasks, exploration |
+| **Anthropic Claude 3.5 Sonnet** | 60-90% | Production code, complex reasoning |
+| **Anthropic Claude 3.5 Opus** | 60-90% | Architecture, critical decisions |
+| **OpenAI GPT-4o** | 60-90% | General tasks |
+
+### Decision Matrix
+
+| Task Type | Fast API | Expensive API |
+|-----------|----------|--------------|
+| Quick Fix | MiniMax M2.7 ⚡ | Claude Haiku 💰 |
+| Exploration | Gemini 3 Flash ⚡ | Claude Sonnet 💰 |
+| Code Generation | Kimi K2.5 ⚡ | Claude Sonnet 💰 |
+| Production | Gemini 3 Pro ⚡ | Claude Sonnet 💰 |
+| Architecture | Gemini 3 Pro ⚡ | Claude Opus 💰 |
+
+### UTS Commands
+
+```bash
+uts check           # Check current model + strategy
+uts select simple   # Select model for simple task
+uts strategy        # Show provider strategy
+uts list            # List all models
+```
 
 ```yaml
 # In skill frontmatter:
-model: haiku    # /sm, exploration, simple lookups
-model: sonnet   # code generation, multi-step plans (default)
+model: haiku        # /sm, exploration, simple lookups
+model: sonnet       # code generation, multi-step plans (default)
 # Omit for Opus — only explicitly route to it
 ```
+
+**New in UTS**: Use `/uts` for adaptive model selection across all CLI agents.
 
 ---
 

@@ -39,7 +39,7 @@ Layer 4: Multi-Agent Dashboard
 ## Architektur: Plugin-Adapter System
 
 ```
-universal-token-saver/
+universal-agent-token-saver/
 ├── core/
 │   ├── vault.ts              # Universal vault pattern
 │   ├── rtk.ts                # RTK bash compression
@@ -225,12 +225,12 @@ uts dashboard
 
 ```bash
 # Universal install
-curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-token-saver/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-agent-token-saver/main/install.sh | bash
 
 # Oder CLI-spezifisch
-curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-token-saver/main/install.sh | bash --adapter=gemini
-curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-token-saver/main/install.sh | bash --adapter=kilo
-curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-token-saver/main/install.sh | bash --adapter=codex
+curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-agent-token-saver/main/install.sh | bash --adapter=gemini
+curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-agent-token-saver/main/install.sh | bash --adapter=kilo
+curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-agent-token-saver/main/install.sh | bash --adapter=codex
 ```
 
 ---

@@ -171,7 +171,7 @@ uts dashboard        # Multi-Agent Token Dashboard
 
 ```bash
 # Auto-Detection + Full Install
-curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-token-saver/main/install-universal.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Supersynergy/universal-agent-token-saver/main/install-universal.sh | bash
 
 # CLI-spezifisch
 curl -fsSL ... | bash -s -- --adapter=gemini

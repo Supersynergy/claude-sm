@@ -1,16 +1,26 @@
 ---
 name: cts
 description: >-
-  Claude Token Saver — 60-90% token savings via vault pattern, RTK compression,
-  and context-mode. Now with Universal Token Saver (UTS) support for ALL CLI agents:
-  Claude Code, Gemini CLI, Kilo, Codex, Kimi. Adaptive model selection based on
-  provider speed/cost. Use / cts init for token optimization, / uts for adaptive model selection.
+  Claude Token Saver + Universal Agent Token Saver (UTS). 60-90% token savings via vault pattern,
+  RTK compression, and context-mode. NOW with UTS: Adaptive Model Selection for ALL CLI agents.
+  MiniMax M2.7 = Speed, Claude Opus = Savings. Supports Claude Code, Gemini CLI, Kilo, Codex, Kimi.
+  Use / cts for vault/skills, / uts for adaptive model selection.
 argument-hint: "[init | search <q> | load <name> | list [cat] | auto <intent> | vault <name> | unvault <name> | stats | tokens | rebuild]"
 allowed-tools: [Bash, Read, mcp__context-mode__ctx_search, mcp__context-mode__ctx_index, mcp__context-mode__ctx_batch_execute, mcp__context-mode__ctx_execute, mcp__context-mode__ctx_execute_file, mcp__context-mode__ctx_fetch_and_index, mcp__context-mode__ctx_stats, mcp__context-mode__ctx_doctor, mcp__context-mode__ctx_upgrade, mcp__context-mode__ctx_purge]
 model: haiku
 ---
 
-# Claude Skill Manager & Token Saver (`/sm`)
+# Claude Skill Manager & Universal Token Saver (`/sm`, `/uts`)
+
+**Universal Agent Token Saver (UTS)** — Adaptive Model Selection for ALL CLI Agents.
+
+| Provider | Model | Strategy |
+|----------|-------|----------|
+| MiniMax | M2.7 | ⚡ Speed (no savings needed) |
+| Anthropic | Claude 3.5 Sonnet | 💰 Full optimization |
+| Google | Gemini 3 Flash | ⚡ Fast |
+
+**Index**: `~/.claude/cts.idx` | 5-col TSV: name/cat/desc/path/vault | grep-able, instant
 
 **Index**: `~/.claude/cts.idx` | 5-col TSV: name/cat/desc/path/vault | grep-able, instant
 **Catalog**: `~/.claude/skills-catalog.md` | ctx-indexed, BM25 semantic
