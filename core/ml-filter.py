@@ -13,6 +13,7 @@ MODEL_PATH = Path.home() / ".cts" / "models" / "ml-filter.cbm"
 FEATURES = [
     "len", "line_count", "json_density", "html_density",
     "error_kw", "warn_kw", "path_density", "uniq_tokens",
+    "digit_density", "upper_ratio", "repeat_score", "bullet_count",
 ]
 
 NOISE_PATTERNS = [
@@ -26,15 +27,31 @@ SIGNAL_KEYWORDS = {"error", "fail", "exception", "traceback", "CRITICAL", "undef
 def extract_features(text: str) -> dict:
     lines = text.splitlines()
     tokens = re.findall(r"\w+", text)
+    lower = text.lower()
+    digits = sum(c.isdigit() for c in text)
+    uppers = sum(c.isupper() for c in text if c.isalpha())
+    letters = sum(1 for c in text if c.isalpha())
+    line_freqs = {}
+    for line in lines[:500]:
+        key = line.strip()[:40]
+        if key:
+            line_freqs[key] = line_freqs.get(key, 0) + 1
+    repeat_score = (sum(f for f in line_freqs.values() if f > 2) / max(len(lines), 1)) if lines else 0
+    bullets = len(re.findall(r"^\s*[-*•]\s+", text, re.M))
+
     return {
         "len": len(text),
         "line_count": len(lines),
         "json_density": text.count("{") / max(len(text), 1),
         "html_density": text.count("<") / max(len(text), 1),
-        "error_kw": sum(1 for kw in SIGNAL_KEYWORDS if kw in text.lower()),
-        "warn_kw": text.lower().count("warn"),
+        "error_kw": sum(1 for kw in SIGNAL_KEYWORDS if kw in lower),
+        "warn_kw": lower.count("warn"),
         "path_density": text.count("/") / max(len(text), 1),
         "uniq_tokens": len(set(tokens)),
+        "digit_density": digits / max(len(text), 1),
+        "upper_ratio": uppers / max(letters, 1),
+        "repeat_score": repeat_score,
+        "bullet_count": bullets,
     }
 
 
@@ -69,6 +86,11 @@ def classify_with_catboost(text: str) -> dict:
         cat = str(pred[0])
     else:
         cat = str(pred)
+    # Conservative guardrail: only drop if the classifier is confident.
+    # Prevents low-conf false positives from killing useful content.
+    confidence = float(max(proba))
+    if cat in {"noise", "boilerplate"} and confidence < 0.75:
+        cat = "signal"
     return {
         "keep": cat in {"signal", "error"},
         "category": cat,

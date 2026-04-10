@@ -16,7 +16,7 @@ TEAM_NS="${CTS_TEAM_NS:-default}"
 USE_CACHE=1
 SUMMARIZE=1
 OUT_MODE="json"
-MODE="summary"   # summary | markdown | extract | raw
+MODE="summary"   # summary | markdown | extract | raw | prefetch
 EXTRACT_PROMPT=""
 
 while [[ $# -gt 0 ]]; do
@@ -28,6 +28,7 @@ while [[ $# -gt 0 ]]; do
     --summarize) SUMMARIZE=1; MODE="summary"; shift ;;
     --markdown) MODE="markdown"; SUMMARIZE=1; shift ;;
     --extract) MODE="extract"; EXTRACT_PROMPT="$2"; SUMMARIZE=1; shift 2 ;;
+    --prefetch) MODE="prefetch"; SUMMARIZE=0; shift ;;
     --json) OUT_MODE="json"; shift ;;
     -h|--help)
       cat <<HELP
@@ -138,7 +139,8 @@ fi
 BYTES=$(printf "%s" "$BODY" | wc -c | tr -d ' ')
 
 KEEP=1
-if [[ -x "$ML_FILTER" ]]; then
+# Skip ml-filter for prefetch/markdown/extract — user explicitly asked for the content
+if [[ -x "$ML_FILTER" && "$MODE" == "summary" && "$SUMMARIZE" == "1" ]]; then
   CLASSIFY=$(printf "%s" "$BODY" | head -c 65536 | "$HOME/.cts/venv/bin/python" "$ML_FILTER" --classify 2>/dev/null || echo '{"keep":true}')
   KEEP=$(echo "$CLASSIFY" | python3 -c 'import json,sys; print(1 if json.load(sys.stdin).get("keep",True) else 0)' 2>/dev/null || echo 1)
 fi
@@ -149,6 +151,12 @@ if [[ "$KEEP" == "0" ]]; then
 fi
 
 SUMMARY_BODY="$BODY"
+
+# Prefetch mode — zero-cost extract of title, h1, meta description, first paragraph
+if [[ "$MODE" == "prefetch" ]]; then
+  SUMMARY_BODY=$(printf "%s" "$BODY" | "$HOME/.cts/venv/bin/python" "$HOME/.cts/bin/hyperfetch-prefetch.py" 2>/dev/null || printf "%s" "$BODY" | head -c 500)
+fi
+
 if [[ "$SUMMARIZE" == "1" && -x "$GEMMA" ]]; then
   case "$MODE" in
     markdown) GEMMA_FLAG="--markdown" ;;
