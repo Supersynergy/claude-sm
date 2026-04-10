@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# hyperfetch — agent-facing wrapper for the Hyperstack 4-stage escalation chain.
+# Called by PreToolUse hooks, subagents, and the /hyperstack skill.
+#
+# Usage:
+#   hyperfetch <url> [--stage curl_cffi|camoufox|domshell|browser] [--team-ns NS]
+#                    [--no-cache] [--summarize] [--json]
+#
+# Outputs single-line JSON (always). Never prints HTML.
+
+set -euo pipefail
+
+URL=""
+STAGE_CAP="browser"
+TEAM_NS="${CTS_TEAM_NS:-default}"
+USE_CACHE=1
+SUMMARIZE=1
+OUT_MODE="json"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --stage) STAGE_CAP="$2"; shift 2 ;;
+    --team-ns) TEAM_NS="$2"; shift 2 ;;
+    --no-cache) USE_CACHE=0; shift ;;
+    --no-summary) SUMMARIZE=0; shift ;;
+    --summarize) SUMMARIZE=1; shift ;;
+    --json) OUT_MODE="json"; shift ;;
+    -h|--help)
+      sed -n '3,13p' "$0"; exit 0 ;;
+    *) URL="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$URL" ]]; then
+  echo '{"error":"no url provided","usage":"hyperfetch <url> [flags]"}' >&2
+  exit 2
+fi
+
+PATCHES="$HOME/patches"
+TOOLSAVER="$HOME/claude-token-saver"
+SANDBOX="$TOOLSAVER/plugins/team-sandbox.sh"
+ML_FILTER="$TOOLSAVER/core/ml-filter.py"
+GEMMA="$TOOLSAVER/core/gemma-gate.py"
+
+stage_enabled() {
+  local stage="$1"
+  case "$STAGE_CAP" in
+    curl_cffi) [[ "$stage" == "curl_cffi" ]] ;;
+    camoufox)  [[ "$stage" == "curl_cffi" || "$stage" == "camoufox" ]] ;;
+    domshell)  [[ "$stage" != "browser" ]] ;;
+    *)         true ;;
+  esac
+}
+
+emit() {
+  # emit <stage> <status> <bytes> <tokens> <body-preview>
+  local stage="$1" status="$2" bytes="$3" tokens="$4" preview="$5"
+  printf '{"stage":"%s","status":%s,"url":"%s","bytes":%s,"tokens":%s,"team_ns":"%s","preview":%s}\n' \
+    "$stage" "$status" "$URL" "$bytes" "$tokens" "$TEAM_NS" "$preview"
+}
+
+json_escape() {
+  python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'
+}
+
+if [[ "$USE_CACHE" == "1" && -f "$HOME/.claude/toolstack.db" && -x "$SANDBOX" ]]; then
+  CTS_TEAM_NS="$TEAM_NS" bash "$SANDBOX" lookup "$URL" 2>/dev/null | head -c 4096 | \
+    python3 -c 'import json,sys
+raw=sys.stdin.read().strip()
+if raw and raw not in ("[]","null",""):
+  try:
+    data=json.loads(raw)
+    if data:
+      print(json.dumps({"cached":True,"data":data[0] if isinstance(data,list) else data}))
+      sys.exit(0)
+  except Exception: pass
+sys.exit(1)' && exit 0 || true
+fi
+
+BODY=""
+OUT_STAGE=""
+OUT_STATUS=0
+
+if stage_enabled "curl_cffi" && [[ -f "$PATCHES/curl_cffi_patch.py" ]]; then
+  BODY=$(uv run --quiet python "$PATCHES/curl_cffi_patch.py" --fetch "$URL" 2>/dev/null || true)
+  if [[ -n "$BODY" ]] && ! echo "$BODY" | grep -q '"blocked":\s*true'; then
+    OUT_STAGE="curl_cffi"
+    OUT_STATUS=200
+  else
+    BODY=""
+  fi
+fi
+
+if [[ -z "$BODY" ]] && stage_enabled "camoufox" && [[ -f "$PATCHES/camoufox_patch.py" ]]; then
+  BODY=$(uv run --quiet python "$PATCHES/camoufox_patch.py" --fetch "$URL" 2>/dev/null || true)
+  if [[ -n "$BODY" ]]; then OUT_STAGE="camoufox"; OUT_STATUS=200; fi
+fi
+
+if [[ -z "$BODY" ]] && stage_enabled "domshell" && [[ -f "$HOME/projects/browser-tools/domshell-lite.py" ]]; then
+  BODY=$(uv run --quiet python "$HOME/projects/browser-tools/domshell-lite.py" --url "$URL" --select body 2>/dev/null || true)
+  if [[ -n "$BODY" ]]; then OUT_STAGE="domshell"; OUT_STATUS=200; fi
+fi
+
+if [[ -z "$BODY" ]] && stage_enabled "browser" && [[ -f "$PATCHES/camoufox_patch.py" ]]; then
+  BODY=$(uv run --quiet python "$PATCHES/camoufox_patch.py" --snapshot "$URL" --interactive-only 2>/dev/null || true)
+  if [[ -n "$BODY" ]]; then OUT_STAGE="browser"; OUT_STATUS=200; fi
+fi
+
+if [[ -z "$BODY" || -z "$OUT_STAGE" ]]; then
+  emit "failed" 0 0 0 '""'
+  exit 1
+fi
+
+BYTES=$(printf "%s" "$BODY" | wc -c | tr -d ' ')
+
+KEEP=1
+if [[ -x "$ML_FILTER" ]]; then
+  CLASSIFY=$(printf "%s" "$BODY" | head -c 65536 | uv run --quiet python "$ML_FILTER" --classify 2>/dev/null || echo '{"keep":true}')
+  KEEP=$(echo "$CLASSIFY" | python3 -c 'import json,sys; print(1 if json.load(sys.stdin).get("keep",True) else 0)' 2>/dev/null || echo 1)
+fi
+
+if [[ "$KEEP" == "0" ]]; then
+  emit "$OUT_STAGE" "$OUT_STATUS" "$BYTES" 5 '"[filtered: noise]"'
+  exit 0
+fi
+
+SUMMARY_BODY="$BODY"
+if [[ "$SUMMARIZE" == "1" && -x "$GEMMA" ]]; then
+  GEMMA_OUT=$(printf "%s" "$BODY" | head -c 131072 | uv run --quiet python "$GEMMA" --summarize 2>/dev/null || true)
+  if [[ -n "$GEMMA_OUT" ]]; then
+    SUMMARY_BODY="$GEMMA_OUT"
+  fi
+fi
+
+PREVIEW=$(printf "%s" "$SUMMARY_BODY" | head -c 2000 | json_escape)
+TOKENS=$(( $(printf "%s" "$SUMMARY_BODY" | wc -c | tr -d ' ') / 4 + 1 ))
+HASH=$(printf "%s" "$BODY" | shasum | awk '{print $1}' | head -c 16)
+
+if [[ "$USE_CACHE" == "1" && -x "$SANDBOX" && -f "$HOME/.claude/toolstack.db" ]]; then
+  CTS_TEAM_NS="$TEAM_NS" bash "$SANDBOX" record "$URL" "$OUT_STAGE" "$BYTES" "$HASH" "$TOKENS" 2>/dev/null || true
+fi
+
+emit "$OUT_STAGE" "$OUT_STATUS" "$BYTES" "$TOKENS" "$PREVIEW"
