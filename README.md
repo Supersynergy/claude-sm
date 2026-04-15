@@ -214,39 +214,70 @@ Switch: `/caveman lite` · `/caveman ultra` · `stop caveman`
 
 ---
 
-## RTK Universal — 60–90% CLI Compression
+## RTK Universal — Keep It. But Use It Right.
 
-> For expensive APIs (Claude, OpenAI). Optional for fast cheap APIs.
+> Verdict: **NOT redundant** vs context-mode. Complementary. Different attack surface.
 
-**Status:** Largely superseded by context-mode for Claude Code users. context-mode intercepts all tools (including Bash) automatically. RTK still valuable for:
-- Standalone terminal use outside Claude Code
-- Non-MCP environments
-- Specific CLI output shaping (git, docker, kubectl)
+### Why RTK survives
+
+context-mode sandboxes MCP tool results. RTK compresses raw Bash output **before** it leaves the shell. They catch different things:
+
+| Command | context-mode covers? | RTK covers? | RTK savings |
+|---------|---------------------|-------------|-------------|
+| `cargo build` | No | **Yes** | **97.2%** |
+| `curl -s` (inline Bash) | Only if you use ctx_fetch_and_index | **Yes** (passive) | **99.8%** |
+| `ps aux` | No | **Yes** | **98.4%** |
+| `docker exec` | No | **Yes** | ~80% |
+| `grep -n` (raw Bash) | Only if you use Grep tool | **Yes** | ~70% |
+| `ls -la` (raw Bash) | Only if you use Glob tool | **Yes** | 62.5% |
+
+### Real measured data (333 RTK calls, global)
+
+```
+Total saved:  3.4M tokens (39.4% avg)
+Cargo build:  1.3M tokens saved (97.2%) — biggest single win
+curl calls:   1.0M tokens saved (99.7%) — schema only, no bloat
+ps aux:       304K tokens saved (98.4%)
+rtk ls:       143K tokens saved (62.5%)
+```
+
+### MISSED savings (last 30 days — 0.1% adoption problem)
+
+RTK only works when explicitly invoked. 40,762 raw Bash commands in 30 days, only 41 used RTK.
+
+| Missed command | Count | Est. tokens missed |
+|---------------|------:|-------------------:|
+| `tail -5` | 2,631 | 680,300 |
+| `ls -la` | 3,458 | 422,700 |
+| `curl -s` | 2,034 | 299,400 |
+| `grep -n` | 1,294 | 204,200 |
+| `find` | 1,023 | 166,000 |
+| `cargo build` | 503 | 77,300 |
+| **TOTAL MISSED** | | **~2.06M tokens = $30.97/month Opus** |
+
+**Fix:** Run `rtk discover` to see your own missed commands. Add `rtk X` prefix rules to CLAUDE.md.
+
+### RTK commands worth always using
 
 ```bash
-rtk-universal install     # Install hook
-rtk-universal wrap <cmd>  # Compress single command
-rtk-universal stats       # Show savings
+rtk cargo build    # 97% savings — never run naked
+rtk cargo check    # 99.6%
+rtk curl -s <url>  # 99.8% — when you want schema/shape not summary
+rtk ps aux         # 98.4%
+rtk docker <cmd>   # ~80%
+rtk git status     # 70%
+rtk ls             # 62%
+rtk read <file>    # 33% — catches raw Bash cat/head
 ```
 
-### Command Mapping
+### RTK vs hyperfetch for curl
 
-| Original | RTK Compressed | Savings |
-|----------|---------------|---------|
-| `git status` | `git status -sb` | 60% |
-| `git log` | `git log --oneline` | 75% |
-| `ls -la` | `ls -1` | 80% |
-| `pytest -v` | `pytest -q --tb=short` | 85% |
-| `npm install` | `npm install --silent` | 90% |
-| `cargo test` | `cargo test --message-format=short` | 80% |
-
-### When to use RTK vs context-mode
-
-```
-Claude Code + context-mode installed → use ctx_batch_execute, skip RTK for bash
-Non-Claude-Code terminal              → use RTK
-Both installed                        → RTK handles raw terminal, ctx handles LLM tools
-```
+| Tool | Output | Savings | Use when |
+|------|--------|---------|----------|
+| raw curl | ~900t | 0% | Never |
+| `rtk curl --schema` | ~15t | **99.8%** | Need API shape/structure |
+| `hyperfetch --extract "field"` | ~5–10t | **99%+** | Need specific facts |
+| `hyperfetch --markdown` | ~50t | 94% | Need readable summary |
 
 ---
 
@@ -402,6 +433,45 @@ curl_cffi → camoufox → domshell → browser (fail-forward)
 | 10-dev team, same target | 150k tok | 200 tok | **750x** |
 | + catboost noise filter | — | 40 tok | **3,666x** |
 | + gemma summary gate | — | 2 tok | **~73,333x** |
+
+---
+
+## Subagent Token Patterns
+
+Per subagent spawn: **30,000 tokens** ($0.45 Opus). Scale fast.
+
+| N agents | Raw cost | Caveman-optimized | ctx_batch replaces all |
+|----------|---------:|------------------:|----------------------:|
+| 1 | 30,000t | 25,450t | **500t** |
+| 3 | 90,000t | 76,350t | **500t** |
+| 5 | 150,000t | 127,250t | **500t** |
+| 10 | 300,000t | 254,500t | **500t** |
+| 20 | 600,000t | 509,000t | **500t** |
+
+`ctx_batch_execute` replaces research subagents entirely — **280x cheaper** than spawning an Explore agent.
+
+### When to spawn vs when to batch
+
+| Task | Spawn subagent? | Optimization |
+|------|----------------|-------------|
+| Research / grep / fetch | **NEVER** | `ctx_batch_execute` — 280x cheaper |
+| Parallel code execution | YES, minimal ctx | Pass task spec only (caveman prompt) |
+| Web scraping N URLs | YES + hyperfetch | Each agent: `hyperfetch --extract "..."` |
+| Long builds | YES, `background=True` | `rtk cargo build` inside agent |
+| Code review | YES, structured output | Demand JSON result back, not prose |
+| Security scan | YES, isolated worktree | Pass file list, not full parent context |
+
+### Subagent prompt optimization rules
+
+```
+1. ctx_batch_execute first — eliminates 80% of research subagent needs
+2. Pass caveman-mode prompts → 35% smaller task spec to each agent
+3. Demand structured output (JSON/bullets) — not prose
+4. Never pass full parent context — slice only what agent needs
+5. use background=True for independent parallel work
+6. hyperfetch --extract for web tasks → skip spawning researcher agent
+7. RTK wraps bash inside subagents too (they run Bash independently)
+```
 
 ---
 
