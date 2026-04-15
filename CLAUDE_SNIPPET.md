@@ -1,108 +1,59 @@
-# CLAUDE.md Token Stack Snippet
+# Token Optimization Stack — CLAUDE.md Addon
 
-> Copy-paste this block into your `~/.claude/CLAUDE.md` to enforce extreme token savings.
-> Requires: [claude-token-saver](https://github.com/Supersynergy/claude-token-saver) + [RTK](https://rtk-ai.app) + context-mode + shellfirm
+> Add this to ~/.claude/CLAUDE.md — auto-loaded every session.
+> Source: https://github.com/Supersynergy/claude-token-saver
+> Install: bash <(curl -fsSL https://raw.githubusercontent.com/Supersynergy/claude-token-saver/main/install-optimized.sh)
 
----
+## Tool Routing (fastest → lowest tokens)
 
-```markdown
-## Token Stack — ALWAYS USE (Vault + RTK + context-mode + shellfirm)
+### Web Fetch
+| Target | Tool | Tokens | Time |
+|--------|------|--------|------|
+| Small API (`/json` `/health` `/api/*`) | `rtk curl -s <url>` | 39t | 890ms |
+| HTML article/doc | `smart-fetch <url>` | ~35t | 200ms |
+| Anti-bot / Cloudflare | `hyperfetch --stage camoufox <url>` | ~153t | 3.3s |
+| Specific fact | `hyperfetch --extract "term" <url>` | 5-12t | 3.2s |
+| Multiple URLs | `ctx_fetch_and_index` | 50t/url | varies |
 
-### Session Start
-Run `/sm init` once per session — indexes key docs, shows savings dashboard, activates all layers.
-
-### Layer 0: Vault — Zero Startup Skills
-All skills cold-stored in `~/.claude/skills-vault/` = 0 startup tokens.
-Only `sm.md` loads (~40 tokens). 313+ skills on-demand via `/sm load <name>`.
-
-### Layer 1: RTK (auto-active, transparent)
-PreToolUse hook rewrites ALL Bash automatically → 60-90% compression.
+### Code Search (sg auto-routes: seek → ayg → rg)
 ```bash
-rtk gain              # savings dashboard
-rtk gain --graph      # 30-day trend
-rtk discover -a       # find missed opportunities
-# Ultra-compact: add -u flag
-rtk grep pattern -u   # +10-20% more savings
-rtk ls -u
+sg <pattern>                  # BM25 ranked, 638x faster than rg on large repos
+sg sym:ClassName              # symbol search via seek
+ast-grep -p 'async $F($_)'    # structural AST search (syntax-aware)
+rga "term"                    # search PDFs/Office/zip archives
 ```
 
-### Layer 2: context-mode (83% context reduction)
+### Context Protection (ALWAYS)
+- 2+ commands → `ctx_batch_execute` (ONE call, 98% reduction vs multiple Bash)
+- WebFetch → `ctx_fetch_and_index` (not raw WebFetch)
+- Follow-up search → `ctx_search`
 
-**RULE: ALWAYS use `ctx_batch_execute` instead of 2+ Bash/Read calls.**
+### Research (NEVER spawn subagents for this)
+`ctx_batch_execute` = 500t. Research Agent spawn = 30,000t. **60x cheaper.**
 
-| Situation | Use | Savings |
-|-----------|-----|---------|
-| 2+ Bash commands | `ctx_batch_execute` | 90% |
-| Read large file | `ctx_execute_file` | 85% |
-| Fetch URL/docs | `ctx_fetch_and_index` | 80% |
-| Search indexed | `ctx_search` | ~200 tokens |
-| Single Bash | RTK (automatic) | 60-90% |
+## Anti-patterns (hooks block these automatically)
+| Command | Problem | Use instead |
+|---------|---------|-------------|
+| `rtk ls` | +35% MORE tokens | Glob tool |
+| `rtk grep` | +10,000% overhead | Grep tool / `sg` |
+| `rtk env` | +105% MORE bytes | `env \| grep PATTERN` |
+| `rtk read` | +412% MORE tokens | Read tool |
+| `cat file.py` via Bash | floods context | Read tool |
+| spawn Agent for research | 30,000t overhead | `ctx_batch_execute` |
 
-**Examples:**
-```python
-# ❌ NEVER: 4 separate calls
-ls src/; grep "fn " src/; cat README.md; git log --oneline -5
+## Output Mode
+- `caveman:full` → 65% output savings (automatic via SessionStart hook)
+- `caveman:ultra` → 75% (non-critical tasks)
+- `stop caveman` → normal prose
 
-# ✅ ALWAYS: 1 batch call
-ctx_batch_execute(commands=[
-  {"label": "tree", "command": "ls src/"},
-  {"label": "functions", "command": "grep 'fn ' src/ -r"},
-  {"label": "readme", "command": "cat README.md"},
-  {"label": "git", "command": "git log --oneline -5"}
-], queries=["project structure", "key functions"])
-
-# Large file read
-ctx_execute_file(path="src/main.rs", intent="understand structure")
-
-# Index once, search many times
-ctx_index(path="docs/API.md", source="api-docs")
-ctx_search(queries=["authentication"], source="api-docs")
+## Cost Reference (Sonnet $3/M · Opus $15/M)
+```
+ctx_batch_execute  :    500t = $0.0015/call Sonnet
+spawn Agent        : 30,000t = $0.09 Sonnet / $0.45 Opus
+caveman:full       : 12,250t output (vs 35,000t baseline) = -65%
+full stack session :  4,000t (vs 143,000t baseline)       = -97%
 ```
 
-### Layer 3: Skill Discovery (~0 tokens)
-```bash
-/sm search <query>    # rg on index, instant, ~0 tokens
-/sm auto <intent>     # find + invoke best skill
-/sm load <name>       # load from vault on demand
-```
-
-### Layer 4: shellfirm (AI safety guardrails)
-Intercepts destructive commands before execution:
-- `rm -rf` → shows blast radius + alternative
-- `git push --force` → BLOCKED severity:CRITICAL
-- `kubectl delete ns` → context-aware protection
-
-MCP tools: `check_command`, `suggest_alternative`, `explain_risk`, `get_policy`
-
-Install: `brew tap kaplanelad/tap && brew install shellfirm && shellfirm connect claude-code`
-
-### Model Routing
-- haiku: search, explore, simple tasks ($1/$5 per M)
-- sonnet: code, planning, complex tasks ($3/$15 per M)
-- opus: architecture decisions only ($5/$25 per M)
-
-### Combined Potential: 4-5M tokens/month saved
-```
-
----
-
-## Quick Install
-
-```bash
-# 1. Install claude-token-saver (skills + vault + sm init)
-curl -fsSL https://raw.githubusercontent.com/Supersynergy/claude-token-saver/main/install.sh | bash
-
-# 2. Install RTK (Bash compression)
-brew install rtk-ai/tap/rtk
-
-# 3. context-mode (via ECC or standalone)
-npm install -g context-mode
-# or install ECC: https://github.com/Supersynergy/everything-claude-code
-
-# 4. shellfirm (AI safety guardrails)
-brew tap kaplanelad/tap && brew install shellfirm
-shellfirm connect claude-code
-
-# 5. Initialize stack
-# In Claude Code: /sm init
-```
+## Gemma Gate (HTML→compact text before Claude sees it)
+Pipeline: trafilatura(0ms) → MLX Qwen3/Phi4(~15-35ms) → Ollama qwen3:0.6b(~50ms)
+Config: `source ~/.claude/cts-env.sh`

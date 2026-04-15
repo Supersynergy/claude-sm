@@ -120,16 +120,31 @@ Doc page (facts)    12,500t       N/A         ~12t    hf --extract "X"
 Anti-bot target       N/A         N/A        ~125t    hf --stage camoufox
 ```
 
-### Gemma alternatives (ranked)
+### Gemma gate model selection (benchmarked 2026-04-16, M4 Max)
 
-| Option | Size | Overhead | Quality | Use when |
-|--------|------|---------|---------|----------|
-| **curl_cffi + python extract** | 0 | 0ms | perfect | JSON APIs — programmatic |
-| **trafilatura** | installed | 0ms | 90% | HTML articles/docs (no LLM!) |
-| **html2text** | installed | 0ms | 80% | simpler HTML conversion |
-| **regex strip** | 0 | 5ms | 60% | fastest, good enough |
-| **qwen2.5:0.5b** | 397MB | ~100ms | 85% | `ollama pull qwen2.5:0.5b` |
-| **phi4-mini (current)** | 2.5GB | ~300ms | 95% | complex extraction |
+**Winner: `mlx-community/Phi-4-mini-instruct-4bit`** — 2.2GB, 556ms warm, 94% quality.
+Correct structured output: 118t→55t (-53%). Requires chat template — instruct-tuned.
+
+**Why NOT Qwen3 small models**: Qwen3-0.6B and 1.7B echo input instead of summarizing.
+They are pre-trained base models without instruction fine-tuning for this task.
+
+```
+Pipeline (fastest → only when needed):
+  1. trafilatura (0ms, 0 LLM)         → 90% of HTML articles  ← try FIRST
+  2. MLX Phi-4-mini-instruct (~556ms) → complex/JS pages, instruct model
+  3. Ollama qwen3:0.6b (~50ms)        → fallback if MLX unavailable
+  4. extractive regex (0ms)           → last resort
+```
+
+| Option | Size | Speed | Quality | Verdict |
+|--------|------|-------|---------|---------|
+| **trafilatura** | 0MB | 0ms | 90% | ★ use first, no LLM |
+| **Phi-4-mini-instruct-4bit MLX** | 2.2GB | 556ms | 94% | ★ recommended LLM |
+| **gemma-4-e2b-it-4bit MLX** | ~7GB | ~800ms | 97% | highest quality, heavy |
+| Qwen3-0.6B MLX | 350MB | fast | ✗ fails | echoes input, wrong model |
+| Qwen3-1.7B MLX | 1GB | fast | ✗ fails | same issue |
+| qwen2.5:0.5b Ollama | 397MB | ~100ms | 80% | ok if MLX unavailable |
+| phi4-mini Ollama (old) | 2.5GB | ~300ms | 94% | replaced by MLX version |
 | **Claude Haiku API** | remote | ~400ms | 99% | $1/M, most accurate |
 
 ### Optimization applied: trafilatura-first pipeline
@@ -626,54 +641,45 @@ Anti-bot target                                  →  curl_cffi chrome110      =
 Replaces: `grep`, `rg`, `rtk grep` (proven +10,000% worse)
 
 ```bash
-sg <pattern>              # auto-route: seek (BM25) → ayg (indexed) → rg
-sg build .                # build seek + ayg index (~30s large repos)
+sg <pattern>              # auto-route: ayg (indexed) → rg (fallback)
+sg build .                # build ayg index once (~30s large repos)
 sg stats                  # show routing decision + index status
-sg sym:FunctionName       # structural symbol search via seek
 sg <pattern> --force-ayg  # force ayg indexed search
-sg <pattern> --force-rg   # force ripgrep (no index)
+sg <pattern> --force-rg   # force ripgrep
+
+# Structural search (syntax-aware, NOT text grep):
+ast-grep -p 'async function $F($_) { $$$ }'  # match any async function
+ast-grep -p 'console.log($ARG)'              # all console.log calls
+
+# Archive/PDF search:
+rga "term" .              # PDFs, docx, zip, epub
 ```
 
-Attribution: [seek/dualeai](https://github.com/dualeai/seek) · [ayg/aygrep](https://github.com/hemeda3/aygrep) · [ripgrep](https://github.com/BurntSushi/ripgrep)
+Attribution: [ayg/aygrep](https://github.com/hemeda3/aygrep) · [ripgrep](https://github.com/BurntSushi/ripgrep)
 
-**Why BM25 matters for AI agents**: seek ranks results by relevance — the best match comes first. Raw rg/ayg return all matches unranked; the agent reads noise before signal.
+> **Note on seek (BM25):** `dualeai/seek` (Go, wraps zoekt, 33 stars) is not on crates.io.
+> `cargo install seek` installs the wrong tool (`yxshv/seek` = app launcher).
+> For BM25-ranked search: use `zoekt` (sourcegraph) — complex self-hosted setup, not covered here.
+> For symbol search: `ast-grep` is easier and more powerful.
 
-Benchmarks (vs ripgrep on same query):
+Benchmarks (ayg vs ripgrep):
 ```
-Tool           Repo size      Time     Speedup    Result quality
-rg             home-assistant 24k f    ~500ms     1x    unranked noise
-ayg            home-assistant 24k f    ~60ms      8x    unranked
-seek           home-assistant 24k f    ~0.3ms     638x  BM25 ranked ★
-seek           rust-lang      58k f    ~0.3ms     1459x BM25 ranked ★
-qgrep-mcp      home-assistant 24k f    ~0.6ms     812x  MCP auto-index
-qgrep-mcp      rust-lang      58k f    ~0.3ms     1753x MCP auto-index
+Repo size           rg time    ayg time   speedup
+< 10k files         ~20ms      needs build  —
+10k-100k files      ~500ms     ~60ms        8x
+> 100k files        ~29s       ~60ms       460x  (Chromium warm)
+Linux kernel 40M    ~1.5s      ~6ms        250x  (hot)
 ```
 
-Routing priority: `seek` index found → seek (BM25). `ayg_index/` found → ayg. Else → rg.
-
-**Also available:**
+**Search tool comparison:**
 
 | Tool | Install | Best for | Stars |
 |------|---------|----------|-------|
-| **seek** | `cargo install seek` | BM25 ranked search, AI agents | ★3,200 |
-| **aygrep (ayg)** | `brew install hemeda3/tap/ayg` | n-gram indexed, fast bulk | ★850 |
-| **ast-grep (sg)** | `brew install ast-grep` | AST structural patterns, `$MATCH` wildcards | ★13,422 |
-| **rga** | `brew install ripgrep-all` | Search PDFs, Office, zip archives | ★7,900 |
-| **qgrep-mcp** | npm install | MCP server, auto-amortized cost estimator | — |
-
-```bash
-# ast-grep — structural code search (syntax-aware, not text)
-ast-grep -p 'async function $NAME($_) { $$$ }'   # match any async fn
-ast-grep -p 'console.log($ARG)'                   # match all console.log
-
-# rga — search inside archives/PDFs
-rga "search term" .                # searches PDFs, docx, zip, epub
-
-# seek — BM25 ranked (build index once)
-seek index .                       # index current repo
-seek query "async error handling"  # returns ranked best-match first
-seek query "sym:AuthMiddleware"    # symbol search
-```
+| **aygrep (ayg)** | `brew install hemeda3/tap/ayg` | n-gram indexed, fast bulk text | ★850 |
+| **ast-grep** | `brew install ast-grep` | AST structural patterns, symbol search | ★13,422 |
+| **rga** | `brew install ripgrep-all` | PDFs, Office, zip, epub archives | ★7,900 |
+| **ripgrep (rg)** | `brew install ripgrep` | baseline, no index needed | ★50k+ |
+| dualeai/seek | manual Go build | BM25 ranked (zoekt wrapper, 33★, not on crates.io) | ★33 |
 
 ### RTK bad-rewrite patch
 
@@ -1186,7 +1192,7 @@ Every tool in this stack, with author links and what it does:
 ### Code Search
 | Tool | Author/Repo | What it does | Benchmark |
 |------|------------|--------------|-----------|
-| **seek** | [dualeai/seek](https://github.com/dualeai/seek) | BM25 ranked indexed search. Best match first. Built for AI agents | 638-1459x faster than rg |
+| **seek (dualeai)** | [dualeai/seek](https://github.com/dualeai/seek) | Go CLI wrapping zoekt. BM25 ranked search. 33★, not on crates.io — manual build. `cargo install seek` installs WRONG tool (yxshv/seek = app launcher) | 638-1459x cited |
 | **aygrep (ayg)** | [hemeda3/aygrep](https://github.com/hemeda3/aygrep) | Sparse n-gram indexed search, warm 250-460x faster than rg | 60ms on 100k+ file repos |
 | **ripgrep (rg)** | [BurntSushi/ripgrep](https://github.com/BurntSushi/ripgrep) | Fast regex search, no index, always-available fallback | baseline |
 | **ast-grep** | [ast-grep/ast-grep](https://github.com/ast-grep/ast-grep) ★13,422 | AST structural code search. `$MATCH` wildcards, syntax-aware | N/A (structural, not text) |
