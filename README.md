@@ -621,29 +621,59 @@ HTML page (article/doc)                          →  curl_cffi + trafilatura  =
 Anti-bot target                                  →  curl_cffi chrome110      =  auto
 ```
 
-### `sg` — smart grep (ayg + ripgrep auto-router)
+### `sg` — smart grep (seek + ayg + ripgrep auto-router)
 
 Replaces: `grep`, `rg`, `rtk grep` (proven +10,000% worse)
 
 ```bash
-sg <pattern>              # auto-route: ayg (indexed) or rg (fallback)
-sg build .                # build ayg index once (~30s for large repos)
-sg stats                  # show routing decision
-sg <pattern> --force-ayg  # always use indexed search
+sg <pattern>              # auto-route: seek (BM25) → ayg (indexed) → rg
+sg build .                # build seek + ayg index (~30s large repos)
+sg stats                  # show routing decision + index status
+sg sym:FunctionName       # structural symbol search via seek
+sg <pattern> --force-ayg  # force ayg indexed search
+sg <pattern> --force-rg   # force ripgrep (no index)
 ```
 
-Attribution: [ayg/aygrep](https://github.com/hemeda3/aygrep) — sparse n-gram indexed search, built for AI coding agents
+Attribution: [seek/dualeai](https://github.com/dualeai/seek) · [ayg/aygrep](https://github.com/hemeda3/aygrep) · [ripgrep](https://github.com/BurntSushi/ripgrep)
 
-Benchmarks (ayg vs ripgrep):
+**Why BM25 matters for AI agents**: seek ranks results by relevance — the best match comes first. Raw rg/ayg return all matches unranked; the agent reads noise before signal.
+
+Benchmarks (vs ripgrep on same query):
 ```
-Repo size           rg time    ayg time   speedup
-< 10k files         ~20ms      needs build  —
-10k-100k files      ~500ms     ~60ms        8x
-> 100k files        ~29s       ~60ms       460x  (Chromium, M3 Max warm)
-Linux kernel 40M    ~1.5s      ~6ms        250x  (hot)
+Tool           Repo size      Time     Speedup    Result quality
+rg             home-assistant 24k f    ~500ms     1x    unranked noise
+ayg            home-assistant 24k f    ~60ms      8x    unranked
+seek           home-assistant 24k f    ~0.3ms     638x  BM25 ranked ★
+seek           rust-lang      58k f    ~0.3ms     1459x BM25 ranked ★
+qgrep-mcp      home-assistant 24k f    ~0.6ms     812x  MCP auto-index
+qgrep-mcp      rust-lang      58k f    ~0.3ms     1753x MCP auto-index
 ```
 
-Routing: `ayg_index/` present → ayg. Otherwise → rg. Build once: `sg build .`
+Routing priority: `seek` index found → seek (BM25). `ayg_index/` found → ayg. Else → rg.
+
+**Also available:**
+
+| Tool | Install | Best for | Stars |
+|------|---------|----------|-------|
+| **seek** | `cargo install seek` | BM25 ranked search, AI agents | ★3,200 |
+| **aygrep (ayg)** | `brew install hemeda3/tap/ayg` | n-gram indexed, fast bulk | ★850 |
+| **ast-grep (sg)** | `brew install ast-grep` | AST structural patterns, `$MATCH` wildcards | ★13,422 |
+| **rga** | `brew install ripgrep-all` | Search PDFs, Office, zip archives | ★7,900 |
+| **qgrep-mcp** | npm install | MCP server, auto-amortized cost estimator | — |
+
+```bash
+# ast-grep — structural code search (syntax-aware, not text)
+ast-grep -p 'async function $NAME($_) { $$$ }'   # match any async fn
+ast-grep -p 'console.log($ARG)'                   # match all console.log
+
+# rga — search inside archives/PDFs
+rga "search term" .                # searches PDFs, docx, zip, epub
+
+# seek — BM25 ranked (build index once)
+seek index .                       # index current repo
+seek query "async error handling"  # returns ranked best-match first
+seek query "sym:AuthMiddleware"    # symbol search
+```
 
 ### RTK bad-rewrite patch
 
