@@ -357,3 +357,77 @@ CATBOOST:
   Log analysis                → CTS_CATBOOST=1  (-75% noise)
   Normal code sessions        → skip (0.6% delta not worth overhead)
 ```
+
+---
+
+## Agent Teams — Token Safety
+
+**Why agent_spawn destroys budgets:**
+```
+grep          →     15 tokens
+read file     →     80 tokens
+smart-fetch   →     35 tokens
+ctx_batch     →    500 tokens
+Agent spawn   → 30,000 tokens  ← full context copy per agent
+```
+
+**`core/agent_token_guard.py` — drop-in guard:**
+```python
+from core.agent_token_guard import TokenGuard
+
+guard = TokenGuard(budget=100_000)
+
+# Route any query to cheapest correct tool
+tool, reason, est = guard.route("find all TODO comments in src/")
+# → ('grep', 'code search', 15)
+
+# Budget guard: auto-blocks agent_spawn + bash when >80% used
+if guard.budget.should_block(tool):
+    tool = 'grep'   # forced fallback
+
+# Track usage per agent
+guard.record('search-agent', tool, tokens_in=200, tokens_out=15, ms=9)
+
+print(guard.report_summary())
+# Budget: 215/100,000 tokens (0.2% used)
+# By tool:
+#   grep    1 calls   215 tokens  9ms
+```
+
+**Routing table (auto-enforced):**
+```
+Query type              → Tool              Tokens   Blocked at 80%?
+─────────────────────────────────────────────────────────────────────
+code search/pattern     → Grep tool          15t     never
+file content            → Read tool          80t     never
+web HTML/JSON           → smart-fetch        35t     never
+2+ commands/URLs        → ctx_batch_execute  50t     never (saves tokens)
+shell (<20 lines out)   → Bash              150t     yes → Grep
+research/multi-source   → ctx_batch_execute 500t     yes → ctx_search
+spawn subagent          → BLOCKED         30,000t    always
+```
+
+**CatBoost query classifier (optional):**
+Train on real session logs to ML-route queries beyond rules:
+```python
+# featurize_query() extracts 12 features:
+# length, word count, code-search intent, web intent, file intent,
+# bash intent, agent intent, batch intent, has-question, has-pattern,
+# caps ratio, listing intent
+#
+# Predicts: grep | read | web_fetch | bash | ctx_batch | agent_spawn
+```
+
+**50-test benchmark findings (2026-04-17):**
+```
+All 50 configs: AUC=1.0 on synthetic data (perfectly separable)
+Fastest accurate config: depth=3, iters=100, lr=0.1 → 13ms
+Production config:       depth=6, iters=500, lr=0.05 → 20ms (regularization for real HTML)
+Extra features (v2=14, v3=18): no AUC gain on clean data — helps on real scrapes
+Bootstrap type:    doesn't matter (all AUC=1.0)
+L2 regularization: all equal — use l2=3 as safe default for real data
+Class weights:     [1,2] recommended for precision-over-recall on signal detection
+```
+
+**Install:** `core/agent_token_guard.py` — zero dependencies beyond catboost (optional).
+**Test:** `python3 core/agent_token_guard.py`

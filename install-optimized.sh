@@ -109,17 +109,10 @@ else
   warn "Homebrew not found — install rg/ast-grep/ayg manually"
 fi
 
-# ── 3. seek (BM25 indexed search) ────────────────────────────────────────────
-if [[ $SKIP_SEEK -eq 0 ]]; then
-  if command -v seek &>/dev/null; then
-    ok "seek already installed"
-  elif command -v cargo &>/dev/null; then
-    info "Building seek (cargo install, ~2-3 min)..."
-    cargo install seek -q && ok "seek installed" || warn "seek build failed — try: cargo install seek"
-  else
-    warn "cargo not found — install Rust first: curl https://sh.rustup.rs -sSf | sh"
-  fi
-fi
+# ── 3. seek — SKIPPED (wrong tool on crates.io) ──────────────────────────────
+# dualeai/seek (BM25 Go tool) is NOT on crates.io. `cargo install seek` installs
+# yxshv/seek (app launcher) — wrong tool. Use ayg (indexed) instead.
+warn "seek: SKIPPED — cargo install seek installs wrong tool (yxshv/seek). Use ayg instead."
 
 # ── 4. RTK ────────────────────────────────────────────────────────────────────
 if ! command -v rtk &>/dev/null; then
@@ -326,7 +319,7 @@ check "ripgrep (rg)"   "command -v rg"                         "brew install rip
 check "ripgrep-all (rga)" "command -v rga"                     "brew install ripgrep-all"
 check "ast-grep"        "command -v ast-grep"                  "brew install ast-grep"
 check "aygrep (ayg)"   "command -v ayg"                        "brew install hemeda3/tap/ayg"
-check "seek"            "command -v seek"                      "cargo install seek"
+# seek SKIPPED — wrong tool on crates.io, use ayg instead
 check "RTK"             "command -v rtk"                       "cargo install rtk"
 check "Ollama"          "command -v ollama"                    "brew install ollama"
 check "smart-fetch"     "command -v smart-fetch"               "copy to ~/.local/bin/"
