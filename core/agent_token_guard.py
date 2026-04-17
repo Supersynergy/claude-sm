@@ -52,13 +52,24 @@ def featurize_query(query: str) -> list:
 
 # ── Rule-based router (no model needed for obvious cases) ─────────────
 RULES = [
-    # (pattern, tool, reason)
-    (r'\b(grep|find pattern|search for|rg |ast-grep|import|function|class def)\b', 'grep', 'code search'),
-    (r'\b(http|https|url|website|scrape|fetch page|web)\b',                         'web_fetch', 'web content'),
-    (r'\b(read file|open|cat |show content|display file)\b',                        'read', 'file content'),
-    (r'\b(run|execute|build|compile|install|git |cargo|npm|pnpm)\b',               'bash', 'shell command'),
-    (r'\b(research|investigate|explore 5\+|analyze multiple|summarize .+ pages)\b','ctx_batch', 'multi-source research'),
-    (r'\b(spawn agent|create agent|delegate|subagent|team)\b',                     'agent_spawn', 'agent delegation'),
+    # (pattern, tool, reason)  — ordered by specificity, first match wins
+    # ctx_batch first: catches research/multi/agent before cheaper rules fire
+    (r'(research|investigate|analyz.+ multiple|summariz.+ pages|compare \d+|5\+|across .+ sources|multi.source)',
+                                                                                    'ctx_batch', 'multi-source research'),
+    (r'(spawn.{0,10}agent|create.{0,10}agent|delegate|subagent|agent.{0,5}team|hand.{0,5}off to)',
+                                                                                    'ctx_batch', 'agent→ctx_batch (30k→500t)'),
+    # web fetch: URL patterns or explicit fetch words
+    (r'(https?://|\.com|\.io|\.org|fetch|scrape|download|webpage|website|page from|competitor|pricing page|pdf report)',
+                                                                                    'web_fetch', 'web content'),
+    # bash: explicit shell operations
+    (r'\b(run |execute|build|compile|install|git |cargo|npm|pnpm|pytest|make |docker)\b',
+                                                                                    'bash', 'shell command'),
+    # grep: code search — before read to catch "list all *.py files"
+    (r'(grep|find all|list all|search for|pattern|import|function|class |def |endpoint|todo|fixme|rg |matching \*)',
+                                                                                    'grep', 'code search'),
+    # read: file content access (specific file by name, not listing)
+    (r'(read the|open the|show the|display the|cat the|content of|config file|current .+file|\.md file|\.json file)',
+                                                                                    'read', 'file content'),
 ]
 
 def route_query(query: str) -> tuple:
@@ -66,6 +77,10 @@ def route_query(query: str) -> tuple:
     q = query.lower()
     for pattern, tool, reason in RULES:
         if re.search(pattern, q):
+            # agent_spawn always remapped to ctx_batch (30,000t → 500t)
+            if tool == 'agent_spawn':
+                tool = 'ctx_batch'
+                reason = 'agent→ctx_batch (30k→500t saved)'
             return tool, reason, TOOL_COST[tool]
     # Default: grep is cheapest for unknown
     return 'grep', 'default: cheapest unknown', TOOL_COST['grep']
@@ -118,10 +133,16 @@ class TokenBudget:
         return self.used / self.budget * 100
 
     def should_block(self, tool: str) -> bool:
-        """Block expensive tools when budget < 20%."""
-        if self.remaining < self.budget * 0.2:
-            if tool in ('agent_spawn', 'bash'):
-                return True
+        """Block expensive tools based on budget thresholds."""
+        # agent_spawn ALWAYS blocked — remapped at route() level, but guard as safety net
+        if tool == 'agent_spawn':
+            return True
+        # >80% used: block bash
+        if self.pct_used >= 80 and tool == 'bash':
+            return True
+        # >95% used: block everything except grep
+        if self.pct_used >= 95 and tool not in ('grep',):
+            return True
         return False
 
     def report(self) -> dict:
